@@ -8,6 +8,7 @@ Filter based on the following parameters
 - Min/Max Bedrooms
 - Min/Max Square Feet
 - Pets Allowed
+- Private Laundry
 - Max Commute Time (using Google Maps API)
 
 Also outputs Walkscore and Bikescore via Walkscore API.
