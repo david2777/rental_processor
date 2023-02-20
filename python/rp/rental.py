@@ -24,6 +24,7 @@ class Rental:
     rent: int = None
     sqft: Union[int, None] = None
     pets: str = None
+    laundry: str = None
 
     _commute: int = None
     _walk_score: Tuple[int, int] = None
@@ -54,6 +55,7 @@ class Rental:
         self.baths = int(matches.group(2))
         self.rent = int(re.sub("[^0-9]", "", self.raw_data[c.RENT]))
         self.pets = self.raw_data[c.PETS]
+        self.laundry = self.raw_data[c.LAUNDRY]
 
     def __repr__(self):
         return f'{self.mls} {self.address} {self.beds}/{self.baths} {self.sqft}sqft ${self.rent}'
@@ -90,7 +92,7 @@ class Rental:
         """
         walk, bike = self.get_walkscore()
         result = [self.mls, self.typ, self.address, self.beds, self.baths, self.rent, self.sqft,
-                  self.get_commute_time(), walk, bike, '', self.pets]
+                  self.get_commute_time(), walk, bike, '', self.pets, self.laundry]
         return [str(x) for x in result]
 
     def get_commute_time(self) -> Union[int, None]:
@@ -180,6 +182,11 @@ class Rental:
             if not check:
                 logger.debug('Discarding %s due to SQFT [%s <= %s < %s]', self, c.MIN_SQFT, self.sqft, c.MAX_SQFT)
                 return False
+
+        checks = ['community', 'common']
+        if c.PRIVATE_LAUNDRY and any([ch in self.laundry.lower() for ch in checks]):
+            logger.debug('Discarding %s due to LAUNDRY', self)
+            return False
 
         if c.ALLOWS_PETS and 'no' in self.pets.lower():
             logger.debug('Discarding %s due to PETS', self)

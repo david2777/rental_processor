@@ -18,6 +18,8 @@ def update_columns(header_row: list[str]) -> bool:
             c.MLS = i
         elif 'type' in item:
             c.TYP = i
+        elif 'laundry' in item:
+            c.LAUNDRY = i
         elif 'city' in item:
             c.CITY = i
         elif 'postal' in item:
@@ -37,7 +39,8 @@ def update_columns(header_row: list[str]) -> bool:
 
     check = []
     all_cols = {'MLS': c.MLS, "Type": c.TYP, 'Street Number': c.ST_NUMBER, 'Street Name': c.ST_NAME, 'City': c.CITY,
-                'ZIP Code': c.ZIP_CODE, 'Beds/Baths': c.BEDS_BATH, 'Rent': c.RENT, 'SQFT': c.SQFT, 'Pets': c.PETS}
+                'ZIP Code': c.ZIP_CODE, 'Beds/Baths': c.BEDS_BATH, 'Rent': c.RENT, 'SQFT': c.SQFT, 'Pets': c.PETS,
+                'Laundry': c.LAUNDRY}
     logger.debug('Column Values')
     for name, value in all_cols.items():
         check.append(value != -1)
