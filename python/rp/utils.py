@@ -1,3 +1,5 @@
+import re
+
 from rp import logger
 from rp import constants as c
 
@@ -14,6 +16,7 @@ def update_columns(header_row: list[str]) -> bool:
     """
     for i, item in enumerate(header_row):
         item = item.lower()
+        item = re.sub(r'\s+', ' ', item)
         if 'mls' in item:
             c.MLS = i
         elif 'type' in item:
@@ -41,9 +44,9 @@ def update_columns(header_row: list[str]) -> bool:
     all_cols = {'MLS': c.MLS, "Type": c.TYP, 'Street Number': c.ST_NUMBER, 'Street Name': c.ST_NAME, 'City': c.CITY,
                 'ZIP Code': c.ZIP_CODE, 'Beds/Baths': c.BEDS_BATH, 'Rent': c.RENT, 'SQFT': c.SQFT, 'Pets': c.PETS,
                 'Laundry': c.LAUNDRY}
-    logger.debug('Column Values')
+    logger.info('Column Values')
     for name, value in all_cols.items():
         check.append(value != -1)
-        logger.debug('\t%s: %s', name, value)
+        logger.info('\t%s: %s', name, value)
 
     return all(check)
