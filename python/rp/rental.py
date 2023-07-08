@@ -1,4 +1,5 @@
 import re
+import enum
 import requests
 from urllib import parse
 from typing import Union, Tuple
@@ -10,6 +11,16 @@ import rp.constants as c
 
 gmaps_client = googlemaps.Client(key=c.MAPS_API_KEY)
 whitespace_reg = re.compile(r"\s+")
+
+
+class RentalStatus(enum.Enum):
+    FILTERED_RENT_LOW = 1
+    FILTERED_RENT_HIGH = 2
+    FILTERED_BEDS = 3
+    FILTERED_SQFT = 4
+    FILTERED_LAUNDRY = 5
+    FILTERED_PETS = 6
+    FILTERED_COMMUTE = 7
 
 
 class Rental:
@@ -29,6 +40,15 @@ class Rental:
     _commute: int = None
     _walk_score: Tuple[int, int] = None
     _lat_lon: Tuple[float, float] = None
+
+    _walk_score_cache = {}
+    walk_score_cache_hits = 0
+    
+    _commute_cache = {}
+    commute_cache_hits = 0
+    
+    _lat_lon_cache = {}
+    lat_lon_cache_hits = 0
 
     def __init__(self, data_row: list[str]):
         """Initialize the rental with a row of data from the spreadsheet.
@@ -74,6 +94,7 @@ class Rental:
             Tuple[float, float]: Tuple where (Latitude, Longitude).
         """
         if self._lat_lon:
+            self.lat_lon_cache_hits += 1
             return self._lat_lon
 
         self._lat_lon = (0.0, 0.0)
@@ -97,8 +118,8 @@ class Rental:
             list[str]: A list of string where each string is data about the rental.
         """
         walk, bike = self.get_walkscore()
-        result = [self.mls, self.typ, self.address, self.beds, self.baths, self.rent, self.sqft,
-                  self.get_commute_time(), walk, bike, '', self.pets, self.laundry]
+        result = [self.mls, self.typ, self.address, self.beds, self.baths, self.get_commute_time(), self.rent,
+                  self.sqft, '', walk, bike, '', '', self.pets, self.laundry]
         return [str(x) for x in result]
 
     def get_commute_time(self) -> Union[int, None]:
@@ -111,6 +132,7 @@ class Rental:
             return 0
 
         if self._commute is not None:
+            self.commute_cache_hits += 1
             return self._commute
 
         logger.debug('Getting commute time from %s to %s', self.address_no_unit, c.WORK_ADDRESS)
@@ -134,7 +156,16 @@ class Rental:
             Tuple[int, int]: Tuple where (Walkscore, Bikescore) for the rental. Defaults to (0, 0) if not available. 
         """
         if self._walk_score:
+            self.walk_score_cache_hits += 1
             return self._walk_score
+
+        try:
+            self._walk_score = self._walk_score_cache[self.address_no_unit]
+            logger.debug('Found WalksScore in cache')
+            logger.debug('Walk %s Bike %s', *self._walk_score)
+            return self._walk_score
+        except KeyError:
+            pass
 
         self._walk_score = (0, 0)
         if c.SKIP_APIS:
@@ -144,7 +175,7 @@ class Rental:
         if not lat or not lon:
             return self._walk_score
 
-        logger.debug('Getting Walkscore for %s', self.address_no_unit)
+        logger.info('Getting Walkscore for %s', self.address_no_unit)
 
         data = {'wsapikey': c.WALKSCORE_API_KEY, 'format': 'json', 'lat': lat, 'lon': lon, 'bike': 1,
                 'address': self.address_no_unit}
@@ -165,41 +196,48 @@ class Rental:
 
         logger.debug('Walk %s Bike %s', *self._walk_score)
 
+        self._walk_score_cache[self.address_no_unit] = self._walk_score
+
         return self._walk_score
 
-    def filter(self) -> bool:
-        """Returns True if the rental matches all criteria provided by the constants and False if not.
+    def filter(self) -> list:
+        """Returns a list of filters, if the list is empty then the listing has passed all checks.
         
         Returns:
-            bool: True if the rental matches all criteria provided by the constants, False if not.
+            list: List of filters, if the list is empty then the listing has passed all checks.
         """
-        check = c.MIN_RENT <= self.rent < c.MAX_RENT
-        if not check:
-            logger.debug('Discarding %s due to RENT [%s <= %s < %s]', self, c.MIN_RENT, self.rent, c.MAX_RENT)
-            return False
+        filters = []
+
+        if not c.MIN_RENT <= self.rent:
+            logger.debug('Discarding %s due to RENT_LOW [%s <= %s]', self, c.MIN_RENT, self.rent)
+            filters.append(RentalStatus.FILTERED_RENT_LOW)
+
+        if not self.rent < c.MAX_RENT:
+            logger.debug('Discarding %s due to RENT_HIGH [%s < %s]', self, self.rent, c.MAX_RENT)
+            filters.append(RentalStatus.FILTERED_RENT_HIGH)
 
         check = c.MIN_BEDS <= self.beds < c.MAX_BEDS
         if not check:
             logger.debug('Discarding %s due to BEDS [%s <= %s < %s]', self, c.MAX_BEDS, self.beds, c.MAX_BEDS)
-            return False
+            filters.append(RentalStatus.FILTERED_BEDS)
 
         if self.sqft is not None:
             check = c.MIN_SQFT <= self.sqft < c.MAX_SQFT
             if not check:
                 logger.debug('Discarding %s due to SQFT [%s <= %s < %s]', self, c.MIN_SQFT, self.sqft, c.MAX_SQFT)
-                return False
+                filters.append(RentalStatus.FILTERED_SQFT)
 
         checks = ['community', 'common']
         if c.PRIVATE_LAUNDRY and any([ch in self.laundry.lower() for ch in checks]):
             logger.debug('Discarding %s due to LAUNDRY', self)
-            return False
+            filters.append(RentalStatus.FILTERED_LAUNDRY)
 
         if c.ALLOWS_PETS and 'no' in self.pets.lower():
             logger.debug('Discarding %s due to PETS', self)
-            return False
+            filters.append(RentalStatus.FILTERED_PETS)
 
         if not c.SKIP_APIS and c.MAX_COMMUTE_TIME and self.get_commute_time() > c.MAX_COMMUTE_TIME:
             logger.debug('Discarding %s due to COMMUTE [%s > %s]', self, self.get_commute_time(), c.MAX_COMMUTE_TIME)
-            return False
+            filters.append(RentalStatus.FILTERED_COMMUTE)
 
-        return True
+        return filters

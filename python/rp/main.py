@@ -48,6 +48,7 @@ def main(data_file_path=None):
         return
 
     count = len(data)
+    filter_counter = {e.name: 0 for e in rental.RentalStatus}
     i = 0
 
     for row in data:
@@ -56,19 +57,35 @@ def main(data_file_path=None):
         logger.debug('%s', row)
         try:
             rental_obj = rental.Rental(row)
-            if rental_obj.filter():
+            filter_results = rental_obj.filter()
+            if not filter_results:
                 results.append(rental_obj)
+            else:
+                for f in filter_results:
+                    filter_counter[f.name] += 1
         except (KeyError, ValueError, TypeError, AttributeError):
             logger.exception('Unhandled Exception on %s', row)
+
+    logger.info('Filter Results')
+    for name, count in filter_counter.items():
+        logger.info('\t%s: %s', name, count)
 
     logger.info('Sorting %s results', len(results))
     results.sort(key=methodcaller('get_commute_time'))
 
     logger.info('Fetching walkscore for %s results and writing to %s', len(results), out_file_path)
+    i = 1
     with open(out_file_path, 'w', newline='') as f:
         writer = csv.writer(f)
         for item in results:
+            logger.info('[%s/%s] Fetching %s', i, len(results), item.address_no_unit)
             writer.writerow(item.get_data_out())
+            i += 1
+            
+    logger.info('Cache Hits')
+    logger.info('\tCommute: %s', results[0].commute_cache_hits)
+    logger.info('\tWalkScore: %s', results[0].walk_score_cache_hits)
+    logger.info('\tLatLon: %s', results[0].lat_lon_cache_hits)
 
     logger.info('Complete!')
 
