@@ -45,14 +45,20 @@ class Rental:
         self.address_no_unit = f'{self.raw_data[c.ST_NUMBER]} {st_name} {self.raw_data[c.CITY]} {self.zip}'
         self.address = whitespace_reg.sub(" ", self.address)
         self.address_no_unit = whitespace_reg.sub(" ", self.address_no_unit)
-        reg = re.compile(r"(\d+)/(\d+)")
+        reg = re.compile(r"(\d+)?/(\d+)?")
         matches = reg.search(self.raw_data[c.BEDS_BATH])
         try:
             self.sqft = int(self.raw_data[c.SQFT].split('/')[0])
         except ValueError:
             self.sqft = None
-        self.beds = int(matches.group(1))
-        self.baths = int(matches.group(2))
+        try:
+            self.beds = int(matches.group(1))
+        except Exception:
+            self.beds = 1
+        try:
+            self.baths = int(matches.group(2))
+        except Exception:
+            self.baths = 1
         self.rent = int(re.sub("[^0-9]", "", self.raw_data[c.RENT]))
         self.pets = self.raw_data[c.PETS]
         self.laundry = self.raw_data[c.LAUNDRY]
